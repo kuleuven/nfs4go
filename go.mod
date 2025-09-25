@@ -3,7 +3,7 @@ module github.com/kuleuven/nfs4go
 go 1.25.1
 
 require (
-	github.com/kuleuven/vfs v0.0.4
+	github.com/kuleuven/vfs v0.0.5
 	github.com/sirupsen/logrus v1.9.3
 	go.uber.org/multierr v1.11.0
 )

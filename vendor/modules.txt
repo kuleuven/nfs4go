@@ -6,7 +6,7 @@ github.com/joshlf/go-acl
 github.com/kuleuven/iron/api
 github.com/kuleuven/iron/msg
 github.com/kuleuven/iron/scramble
-# github.com/kuleuven/vfs v0.0.4
+# github.com/kuleuven/vfs v0.0.5
 ## explicit; go 1.24.0
 github.com/kuleuven/vfs
 github.com/kuleuven/vfs/bytetree

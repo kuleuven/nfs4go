@@ -174,7 +174,7 @@ func (fi *ExtendedFileInfo) Gid() uint32 { //nolint:staticcheck
 
 func (fi *ExtendedFileInfo) NumLinks() uint64 {
 	if s, ok := fi.Sys().(*syscall.Stat_t); ok {
-		return s.Nlink
+		return uint64(s.Nlink) //nolint:unconvert
 	}
 
 	return 1
