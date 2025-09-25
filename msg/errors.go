@@ -8,6 +8,7 @@ import (
 	"os"
 	"syscall"
 
+	"github.com/kuleuven/vfs"
 	"github.com/sirupsen/logrus"
 )
 
@@ -111,7 +112,7 @@ func Err2Status(err error) uint32 {
 		return NFS4ERR_PERM
 	case errors.Is(err, os.ErrInvalid):
 		return NFS4ERR_INVAL
-	case errors.Is(err, syscall.EBADFD):
+	case errors.Is(err, vfs.ErrInvalidHandle):
 		return NFS4ERR_BADHANDLE
 	case errors.Is(err, syscall.EISDIR):
 		return NFS4ERR_ISDIR
