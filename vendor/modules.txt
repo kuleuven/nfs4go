@@ -1,0 +1,35 @@
+# github.com/joshlf/go-acl v0.0.0-20200411065538-eae00ae38531
+## explicit
+github.com/joshlf/go-acl
+# github.com/kuleuven/iron v0.4.4
+## explicit; go 1.24
+github.com/kuleuven/iron/api
+github.com/kuleuven/iron/msg
+github.com/kuleuven/iron/scramble
+# github.com/kuleuven/vfs v0.0.3
+## explicit; go 1.24.0
+github.com/kuleuven/vfs
+github.com/kuleuven/vfs/bytetree
+github.com/kuleuven/vfs/fs/emptyfs
+github.com/kuleuven/vfs/fs/errorfs
+github.com/kuleuven/vfs/fs/nativefs
+github.com/kuleuven/vfs/fs/rootfs
+github.com/kuleuven/vfs/fs/rootfs/handledb
+github.com/kuleuven/vfs/io/readerat
+github.com/kuleuven/vfs/io/writerat
+github.com/kuleuven/vfs/runas
+# github.com/pkg/xattr v0.4.12
+## explicit; go 1.14
+github.com/pkg/xattr
+# github.com/sirupsen/logrus v1.9.3
+## explicit; go 1.13
+github.com/sirupsen/logrus
+# github.com/stretchr/testify v1.8.0
+## explicit; go 1.13
+# go.uber.org/multierr v1.11.0
+## explicit; go 1.19
+go.uber.org/multierr
+# golang.org/x/sys v0.34.0
+## explicit; go 1.23.0
+golang.org/x/sys/unix
+golang.org/x/sys/windows
