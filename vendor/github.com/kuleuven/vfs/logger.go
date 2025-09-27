@@ -7,11 +7,11 @@ import (
 )
 
 func Logger(ctx context.Context) *logrus.Entry {
-	if logger, ok := ctx.Value(Logger).(*logrus.Logger); ok {
+	if logger, ok := ctx.Value(Log).(*logrus.Logger); ok {
 		return logrus.NewEntry(logger)
 	}
 
-	if logger, ok := ctx.Value(Logger).(*logrus.Entry); ok {
+	if logger, ok := ctx.Value(Log).(*logrus.Entry); ok {
 		return logger
 	}
 
