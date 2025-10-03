@@ -1966,7 +1966,7 @@ func (x *Compound) Open(in, out Bytes) (uint32, error) { //nolint:funlen,gocogni
 			fs.Chmod(path, mode) //nolint:errcheck
 		}
 
-		f = vfs.NopReaderAt(h)
+		f = NopReaderAt(h)
 	case flag&os.O_RDWR != 0:
 		h, err := fs.OpenFile(path, flag, mode)
 		if err != nil {
@@ -1990,7 +1990,7 @@ func (x *Compound) Open(in, out Bytes) (uint32, error) { //nolint:funlen,gocogni
 			)
 		}
 
-		f = vfs.NopWriterAt(h)
+		f = NopWriterAt(h)
 	}
 
 	handle := x.CurrentHandle.Handle
