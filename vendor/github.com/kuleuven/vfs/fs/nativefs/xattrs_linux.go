@@ -6,6 +6,7 @@ package nativefs
 import (
 	"errors"
 	"os"
+	"strings"
 	"syscall"
 
 	"github.com/kuleuven/vfs"
@@ -34,6 +35,10 @@ func setExtendedAttrs(path string, attrs vfs.Attributes, list func(string) ([]st
 	todelete := map[string]bool{}
 
 	for _, name := range attrnames {
+		if strings.HasPrefix(name, "security.") {
+			continue
+		}
+
 		todelete[name] = true
 	}
 
@@ -111,6 +116,10 @@ func getExtendedAttrs(path string, list func(string) ([]string, error), get func
 	attrs := vfs.Attributes{}
 
 	for _, attr := range attrnames {
+		if attr == "" || strings.HasPrefix(attr, "security.") {
+			continue
+		}
+
 		value, err = get(path, attr)
 		if errors.Is(err, syscall.EOPNOTSUPP) {
 			return vfs.Attributes{}, nil

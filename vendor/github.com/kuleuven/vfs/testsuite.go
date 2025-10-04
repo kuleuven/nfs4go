@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -58,11 +60,16 @@ func RunTestSuiteRO(t *testing.T, fs FS) {
 		})
 	}
 
-	if rfs, ok := fs.(RootFS); ok {
+	if rfs, ok := fs.(OpenFS); ok {
 		t.Run("Open", func(t *testing.T) {
-			testRootFSOpen(t, rfs)
+			testOpenFS(t, rfs)
 		})
 	}
+}
+
+type OpenFS interface {
+	FS
+	Open(path string) (File, error)
 }
 
 // RunTestSuiteRW runs comprehensive read-write tests for FS implementations
@@ -144,13 +151,17 @@ func testStat(t *testing.T, fs FS) {
 
 	t.Logf("Root info: %s (size: %d, mode: %v)", finfo.Name(), finfo.Size(), finfo.Mode())
 
-	// Test extended attributes if available
-	if attrs, err := finfo.Extended(); err == nil {
+	// Test extended attributes
+	if attrs, err := finfo.Extended(); err != nil {
+		t.Errorf("Failed to get extended attributes: %v", err)
+	} else {
 		t.Logf("Extended attributes available: %d attrs", len(attrs))
 	}
 
-	// Test permissions if available
-	if perms, err := finfo.Permissions(); err == nil {
+	// Test permissions
+	if perms, err := finfo.Permissions(); err != nil || perms == nil {
+		t.Errorf("Failed to get permissions: %v", err)
+	} else {
 		t.Logf("Permissions: read=%v, write=%v, delete=%v, own=%v",
 			perms.Read, perms.Write, perms.Delete, perms.Own)
 	}
@@ -388,15 +399,20 @@ func testDirectoryOperations(t *testing.T, fs FS) { //nolint:funlen
 	}
 
 	if !finfo.IsDir() {
-		t.Error("Created path should be a directory")
+		t.Fatal("Created path should be a directory")
 	}
 
 	// Test nested directory creation
-	nestedDir := testDir + "/nested/deep"
-
-	err = MkdirAll(fs, nestedDir, 0o755)
-	if err != nil {
-		t.Fatal(err)
+	for _, nestedDir := range []string{
+		testDir + "/nested",
+		testDir + "/nested/deep",
+		testDir + "/nested/deep2",
+		testDir + "/nested/deep3",
+	} {
+		err = fs.Mkdir(nestedDir, 0o755)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// Create a file in the directory
@@ -432,22 +448,12 @@ func testDirectoryOperations(t *testing.T, fs FS) { //nolint:funlen
 
 	lister.Close()
 
-	found := false
-
-	for _, finfo := range buf[:n] {
-		t.Logf("Directory content: %s", finfo.Name())
-
-		if finfo.Name() == "test_file.txt" {
-			found = true
-		}
-	}
-
-	if !found {
+	if !slices.ContainsFunc(buf[:n], func(finfo FileInfo) bool { return finfo.Name() == "test_file.txt" }) {
 		t.Error("Created file not found in directory listing")
 	}
 
-	// Clean up
-	err = RemoveAll(fs, testFile)
+	// Test remove of a directory
+	err = fs.Rmdir(testDir + "/nested/deep3")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -481,7 +487,7 @@ func testPermissionOperations(t *testing.T, fs FS) {
 
 	// Test chmod
 	if err := fs.Chmod(testFile, 0o644); err != nil {
-		t.Logf("Chmod not supported or failed: %v", err)
+		t.Errorf("Chmod not supported or failed: %v", err)
 	}
 
 	// Test chown (might not be supported in many implementations)
@@ -502,7 +508,7 @@ func testTimeOperations(t *testing.T, fs FS) {
 	newTime := time.Now().Add(-24 * time.Hour)
 
 	if err := fs.Chtimes(testFile, newTime, newTime); err != nil {
-		t.Logf("Chtimes not supported or failed: %v", err)
+		t.Errorf("Chtimes not supported or failed: %v", err)
 		return
 	}
 
@@ -562,6 +568,12 @@ func testRenameOperations(t *testing.T, fs FS) {
 		t.Errorf("Renamed file has wrong content: expected '%s', got '%s'",
 			testContent, string(buf))
 	}
+
+	// Clean up
+	err = RemoveAll(fs, newPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func testTruncateOperations(t *testing.T, fs FS) {
@@ -606,7 +618,7 @@ func testTruncateOperations(t *testing.T, fs FS) {
 
 func testExtendedAttributes(t *testing.T, fs FS) {
 	testFile := "/test_xattrs.txt"
-	attrName := "user.test"
+	attrName := "user.meta.test"
 	attrValue := []byte("test value")
 
 	// Create test file
@@ -616,7 +628,7 @@ func testExtendedAttributes(t *testing.T, fs FS) {
 
 	// Set extended attribute
 	if err := fs.SetExtendedAttr(testFile, attrName, attrValue); err != nil {
-		t.Logf("SetExtendedAttr not supported or failed: %v", err)
+		t.Errorf("SetExtendedAttr not supported or failed: %v", err)
 
 		return
 	}
@@ -627,21 +639,30 @@ func testExtendedAttributes(t *testing.T, fs FS) {
 		t.Fatal(err)
 	}
 
-	if attrs, err := finfo.Extended(); err == nil {
-		if value, ok := attrs.Get(attrName); ok {
-			if !bytes.Equal(value, attrValue) {
-				t.Errorf("Expected xattr value '%s', got '%s'",
-					string(attrValue), string(value))
-			}
-		} else {
-			t.Log("Extended attribute not found after setting")
+	attrs, err := finfo.Extended()
+	if err != nil {
+		t.Fatalf("Failed to get extended attributes: %v", err)
+	}
+
+	if len(attrs) == 0 {
+		t.Skip("Extended attributes not supported")
+	}
+
+	t.Logf("Extended attributes available: %d attrs %v", len(attrs), attrs)
+
+	if value, ok := attrs.Get(attrName); ok {
+		if !bytes.Equal(value, attrValue) {
+			t.Errorf("Expected xattr value '%s', got '%s'",
+				string(attrValue), string(value))
 		}
+	} else {
+		t.Error("Extended attribute not found after setting")
 	}
 
 	// Unset extended attribute
 	err = fs.UnsetExtendedAttr(testFile, attrName)
 	if err != nil {
-		t.Logf("UnsetExtendedAttr failed: %v", err)
+		t.Errorf("UnsetExtendedAttr failed: %v", err)
 	}
 }
 
@@ -653,13 +674,11 @@ func testHandleFS(t *testing.T, hfs HandleFS) {
 			return err
 		}
 
+		t.Logf("Walk: %s (dir: %v)", path, info.IsDir())
+
 		handle, err := hfs.Handle(path)
 		if err != nil {
-			t.Fatal(err)
-		}
-
-		if len(handle) == 0 {
-			t.Error("Handle should not be empty")
+			t.Fatalf("Failed to get handle for %s: %v", path, err)
 		}
 
 		t.Logf("handle of %s: %x", path, handle)
@@ -676,12 +695,12 @@ func testHandleResolveFS(t *testing.T, hrfs HandleResolveFS) {
 
 		handle, err := hrfs.Handle(path)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("Failed to get handle for %s: %v", path, err)
 		}
 
 		resolved, err := hrfs.Path(handle)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("Failed to get path for handle %x: %v", handle, err)
 		}
 
 		if resolved != path {
@@ -692,12 +711,12 @@ func testHandleResolveFS(t *testing.T, hrfs HandleResolveFS) {
 	})
 }
 
-func testOpenFileFS(t *testing.T, offs OpenFileFS) {
+func testOpenFileFS(t *testing.T, offs OpenFileFS) { //nolint:funlen
 	testFile := "/test_openfile.txt"
-	testContent := "OpenFile test content"
+	testContent := strings.Repeat("OpenFile test content", 100)
 
 	// Create and write using OpenFile
-	file, err := offs.OpenFile(testFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	file, err := offs.OpenFile(testFile, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -711,20 +730,21 @@ func testOpenFileFS(t *testing.T, offs OpenFileFS) {
 		t.Errorf("Expected to write %d bytes, wrote %d", len(testContent), n)
 	}
 
-	err = file.Close()
+	fi, err := file.Stat()
 	if err != nil {
-		t.Fatal(err)
+		t.Errorf("Stat failed: %v", err)
+	} else if fi.Size() != int64(len(testContent)) {
+		t.Errorf("Expected file size %d, got %d", len(testContent), fi.Size())
 	}
 
-	// Read back using OpenFile
-	file2, err := offs.OpenFile(testFile, os.O_RDONLY, 0)
+	_, err = file.Seek(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	buf := make([]byte, len(testContent))
 
-	readN, err := file2.Read(buf)
+	readN, err := file.Read(buf)
 	if err != nil && !errors.Is(err, io.EOF) {
 		t.Fatal(err)
 	}
@@ -733,7 +753,30 @@ func testOpenFileFS(t *testing.T, offs OpenFileFS) {
 		t.Errorf("Expected content '%s', got '%s'", testContent, string(buf[:readN]))
 	}
 
-	file2.Close()
+	_, err = file.WriteAt([]byte("TestOverwrite"), 100)
+	if err != nil {
+		t.Error(err)
+	}
+
+	_, err = file.WriteAt([]byte("TestAppend"), int64(len(testContent)))
+	if err != nil {
+		t.Error(err)
+	}
+
+	buf2 := make([]byte, 8)
+
+	_, err = file.ReadAt(buf2, 100-4)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if string(buf2[4:]) != "Test" {
+		t.Errorf("Expected content '%s', got '%s'", "Test", string(buf2[:4]))
+	}
+
+	if err = file.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	if err = offs.Remove(testFile); err != nil {
 		t.Fatal(err)
@@ -846,17 +889,17 @@ func testLinkFS(t *testing.T, lfs LinkFS) {
 	finfo, err := lfs.Stat(original)
 	if err == nil {
 		if finfo.NumLinks() < 2 {
-			t.Errorf("Expected at least 2 links, got %d", finfo.NumLinks())
+			t.Logf("Expected at least 2 links, got %d", finfo.NumLinks())
 		}
 	}
 
 	// Clean up
 	if err := lfs.Remove(hardlink); err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 
 	if err := lfs.Remove(original); err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 }
 
@@ -903,6 +946,12 @@ func testWalkFS(t *testing.T, wfs WalkFS) {
 	}
 }
 
+const (
+	testmeta1 = "user.meta.test1"
+	testmeta2 = "user.meta.test2"
+	testmeta3 = "user.meta.test3"
+)
+
 func testSetExtendedAttrsFS(t *testing.T, seafs SetExtendedAttrsFS) {
 	testFile := "/test_set_xattrs.txt"
 
@@ -913,14 +962,14 @@ func testSetExtendedAttrsFS(t *testing.T, seafs SetExtendedAttrsFS) {
 
 	// Set multiple extended attributes at once
 	attrs := Attributes{
-		"user.test1": []byte("value1"),
-		"user.test2": []byte("value2"),
-		"user.test3": []byte("value3"),
+		testmeta1: []byte("value1"),
+		testmeta2: []byte("value2"),
+		testmeta3: []byte("value3"),
 	}
 
 	err := seafs.SetExtendedAttrs(testFile, attrs)
 	if err != nil {
-		t.Logf("SetExtendedAttrs not supported or failed: %v", err)
+		t.Errorf("SetExtendedAttrs not supported or failed: %v", err)
 
 		return
 	}
@@ -936,6 +985,39 @@ func testSetExtendedAttrsFS(t *testing.T, seafs SetExtendedAttrsFS) {
 		t.Fatal(err)
 	}
 
+	if len(readAttrs) == 0 {
+		t.Skip("Extended attributes not supported")
+	}
+
+	verifyAttrs(t, readAttrs, attrs)
+
+	attrs = Attributes{
+		testmeta1: []byte("value1"),
+	}
+
+	err = seafs.SetExtendedAttrs(testFile, attrs)
+	if err != nil {
+		t.Errorf("SetExtendedAttrs not supported or failed: %v", err)
+
+		return
+	}
+
+	// Verify attributes were set
+	finfo, err = seafs.Stat(testFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	readAttrs, err = finfo.Extended()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	verifyAttrs(t, readAttrs, attrs)
+	verifyAbsent(t, readAttrs, testmeta2, testmeta3)
+}
+
+func verifyAttrs(t *testing.T, readAttrs, attrs Attributes) {
 	for name, expectedValue := range attrs {
 		if actualValue, ok := readAttrs.Get(name); ok {
 			if !bytes.Equal(actualValue, expectedValue) {
@@ -943,12 +1025,20 @@ func testSetExtendedAttrsFS(t *testing.T, seafs SetExtendedAttrsFS) {
 					name, string(expectedValue), string(actualValue))
 			}
 		} else {
-			t.Logf("Attribute %s not found after batch set", name)
+			t.Errorf("Attribute %s not found after batch set", name)
 		}
 	}
 }
 
-func testRootFSOpen(t *testing.T, rfs RootFS) {
+func verifyAbsent(t *testing.T, readAttrs Attributes, names ...string) {
+	for _, name := range names {
+		if _, ok := readAttrs.Get(name); ok {
+			t.Errorf("Attribute %s: expected not present", name)
+		}
+	}
+}
+
+func testOpenFS(t *testing.T, rfs OpenFS) {
 	f, err := rfs.Open("/")
 	if err != nil {
 		t.Fatal(err)
@@ -970,6 +1060,6 @@ func testRootFSOpen(t *testing.T, rfs RootFS) {
 			continue
 		}
 
-		t.Logf("RootFS: %s (dir: %v)", finfo[0].Name(), finfo[0].IsDir())
+		t.Logf("OpenFS: %s (dir: %v)", finfo[0].Name(), finfo[0].IsDir())
 	}
 }

@@ -150,7 +150,7 @@ func Base(path string) string {
 func Split(path string) (string, string) {
 	i := len(path) - 1
 
-	for i > 0 && !os.IsPathSeparator(path[i]) {
+	for i >= 0 && !os.IsPathSeparator(path[i]) {
 		i--
 	}
 

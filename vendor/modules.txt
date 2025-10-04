@@ -1,13 +1,13 @@
 # github.com/joshlf/go-acl v0.0.0-20200411065538-eae00ae38531
 ## explicit
 github.com/joshlf/go-acl
-# github.com/kuleuven/iron v0.4.4
+# github.com/kuleuven/iron v0.4.8
 ## explicit; go 1.24
 github.com/kuleuven/iron/api
 github.com/kuleuven/iron/msg
 github.com/kuleuven/iron/scramble
-# github.com/kuleuven/vfs v0.0.5
-## explicit; go 1.24.0
+# github.com/kuleuven/vfs v0.0.20
+## explicit; go 1.25.1
 github.com/kuleuven/vfs
 github.com/kuleuven/vfs/bytetree
 github.com/kuleuven/vfs/fs/errorfs

@@ -3,7 +3,6 @@ package vfs
 import (
 	"errors"
 	"io"
-	"os"
 
 	"github.com/kuleuven/vfs/io/readerat"
 	"github.com/kuleuven/vfs/io/writerat"
@@ -72,49 +71,4 @@ func FileWriteCloser(fs FS, path string, flags int) (io.WriteCloser, error) {
 		Writer: writer,
 		Closer: writerAt,
 	}, nil
-}
-
-func FileExclusiveWriteCloser(fs FS, path string) (io.WriteCloser, error) {
-	writerAt, err := fs.FileWrite(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
-	if err != nil {
-		return nil, err
-	}
-
-	writer := writerat.Writer(writerAt, 0, -1)
-
-	return struct {
-		io.Writer
-		io.Closer
-	}{
-		Writer: writer,
-		Closer: writerAt,
-	}, nil
-}
-
-func NopWriterAt(r ReaderAt) WriterAtReaderAt {
-	return &nopWriterAt{
-		ReaderAt: r,
-	}
-}
-
-type nopWriterAt struct {
-	ReaderAt
-}
-
-func (r *nopWriterAt) WriteAt([]byte, int64) (int, error) {
-	return 0, os.ErrPermission
-}
-
-func NopReaderAt(w WriterAt) WriterAtReaderAt {
-	return &nopReaderAt{
-		WriterAt: w,
-	}
-}
-
-type nopReaderAt struct {
-	WriterAt
-}
-
-func (r *nopReaderAt) ReadAt([]byte, int64) (int, error) {
-	return 0, os.ErrPermission
 }
